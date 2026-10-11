@@ -1,5 +1,7 @@
 import * as T from './vendor/three.module.js';
 import {createQuests} from './quests.js';
+import {createGreenhouse} from './greenhouse.js';
+import {journal} from './journal.js';
 export function createInterior(camera){
  const scene=new T.Scene();scene.background=new T.Color('#e2d8c2');scene.fog=new T.Fog('#cbb899',22,45);let seed=44;function rand(){seed=(1664525*seed+1013904223)>>>0;return seed/4294967296;}const cube=new T.BoxGeometry(1,1,1);const objects=[],solids=[];
  const material=(color,extra={})=>new T.MeshStandardMaterial({color,roughness:.86,...extra});
@@ -54,7 +56,10 @@ export function createInterior(camera){
  // Batch static panels and book details without changing inspectable meshes.
  const groups=new Map();for(const o of [...scene.children]){if(o.isMesh&&!o.isInstancedMesh&&o.geometry===cube){o.updateMatrix();let g=groups.get(o.material);if(!g){g=[];groups.set(o.material,g);}g.push(o.matrix.clone());scene.remove(o);}}
  for(const [m,matrices] of groups){const batch=new T.InstancedMesh(cube,m,matrices.length);matrices.forEach((v,i)=>batch.setMatrixAt(i,v));batch.castShadow=true;batch.receiveShadow=true;batch.computeBoundingSphere();scene.add(batch);}
- const quests=createQuests(scene);
+ // A glazed side door, on the clear rear corner of the east wall.
+ box(walnut,4.82,1.5,2.85,.12,2.9,1.3);box(pane,4.73,1.9,2.85,.035,1.45,1.08);for(let z of [2.22,3.48])box(oak,4.68,1.5,z,.1,2.9,.065);box(oak,4.68,1.12,2.85,.1,.08,1.3);add(new T.SphereGeometry(.045,8,8),brass,4.62,1.15,3.3);
+ const quests=createQuests(scene);let wing=null,wingActive=false;
+ bottle.userData.journal='bottle';button.userData.journal='button';spool.userData.journal='spool';marbles[0].userData.journal='marble';
  let small=false,yaw=.25,pitch=-.045,pos=new T.Vector3(1.3,1.62,3.12),scaleAnim=null,tour=0;const keys=new Set(),ray=new T.Raycaster();const tours=[{x:1.3,z:3.12,yaw:.25,pitch:-.04},{x:-.65,z:3.4,yaw:0,pitch:-.5},{x:-1.75,z:.0,yaw:0,pitch:-.15},{x:1.9,z:.7,yaw:-Math.PI/2,pitch:-.15},{x:.65,z:3.5,yaw:0,pitch:-.55}];
  function place(i){tour=i%tours.length;const t=tours[tour];pos.x=(!small&&tour===3)?1.9:t.x;pos.z=t.z;pos.y=small?quests.ground(pos.x,pos.z)+.2:1.62;yaw=(!small&&tour===3)?-Math.PI/2:t.yaw;pitch=t.pitch;}
  function valid(x,z,mini=small){const r=mini?.055:.19,y=mini?.2:1.62;if(x<-4.58+r||x>4.6-r||z<-3.72+r||z>3.69-r)return false;if(quests.blocked(x,z,mini,quests.ground(pos.x,pos.z)))return false;if(mini&&quests.ground(x,z)-quests.ground(pos.x,pos.z)>.08)return false;return !solids.some(s=>(mini?(y>=s.low&&y<=s.high):(s.high>.15&&s.low<1.75))&&Math.abs(x-s.x)<s.w/2+r&&Math.abs(z-s.z)<s.d/2+r);}
@@ -63,5 +68,9 @@ export function createInterior(camera){
  function update(dt,time){if(scaleAnim){scaleAnim.t=Math.min(1,scaleAnim.t+dt/1.1);let t=scaleAnim.t;pos.y=T.MathUtils.lerp(scaleAnim.from,scaleAnim.to,t*t*(3-2*t));if(t===1)scaleAnim=null;}const f=(keys.has('forward')?1:0)-(keys.has('back')?1:0),s=(keys.has('right')?1:0)-(keys.has('left')?1:0);const len=Math.hypot(f,s)||1,speed=(small?.6:1.65)*dt;let dx=(-Math.sin(yaw)*f+Math.cos(yaw)*s)/len*speed,dz=(-Math.cos(yaw)*f-Math.sin(yaw)*s)/len*speed;if(valid(pos.x+dx,pos.z))pos.x+=dx;if(valid(pos.x,pos.z+dz))pos.z+=dz;if(!scaleAnim)pos.y=small?quests.ground(pos.x,pos.z)+.2:1.62;quests.update(time);sync();flames.forEach((o,i)=>{o.scale.y=.16+Math.sin(time*4+i)*.045+(i%3)*.07;});fire.intensity=2.6+Math.sin(time*5)*.2;dust.rotation.y=Math.sin(time*.04)*.02;}
  function inspect(){ray.setFromCamera(new T.Vector2(0,0),camera);scene.updateMatrixWorld(true);const hits=ray.intersectObjects(objects,false);if(hits[0]&&hits[0].distance<(small?1.2:3))return hits[0].object.userData.inspect;return small?'試著走到線軸、玻璃珠或沙發底下的鈕扣旁，再對準它觀察。':'可以先環視客廳，再按「縮小」，看看家具如何變成巨大的景觀。';}
  function enter(){small=false;pos.set(1.3,1.62,3.12);yaw=.25;pitch=-.045;keys.clear();scaleAnim=null;camera.fov=58;camera.near=.018;camera.updateProjectionMatrix();sync();}
- return {scene,enter,update,setSmall,look:(dx,dy)=>{yaw-=dx*.004;pitch=T.MathUtils.clamp(pitch-dy*.003,-1.1,1.1);},keys,tour:()=>{place(tour+1);return ['入口全景','滑蓋木盒','書堆與尺','沙發下的紙盒','恢復裝置'][tour];},inspect,quests,action:()=>quests.interact(pos,small),nearby:()=>quests.context(pos,small),get small(){return small;},valid,get position(){return pos;},solids};
+ function goWing(){if(!wing)wing=createGreenhouse(camera,keys);wing.enter(small);wingActive=true;keys.clear();}
+ function back(){const mini=wing.small;wingActive=false;small=mini;pos.set(3.9,small?.2:1.62,2.85);yaw=Math.PI/2;pitch=-.04;scaleAnim=null;keys.clear();camera.fov=small?62:58;camera.updateProjectionMatrix();sync();}
+ function nearby(){if(wingActive)return wing.context();if(Math.hypot(pos.x-4.72,pos.z-2.85)<1.2)return {id:'greenhouse',label:'推門進溫室'};return quests.context(pos,small);}
+ function observe(){if(wingActive)return wing.inspect();ray.setFromCamera(new T.Vector2(0,0),camera);scene.updateMatrixWorld(true);const hit=ray.intersectObjects(objects,false)[0];if(hit&&hit.distance<(small?1.2:3)&&hit.object.userData.journal)journal.record(hit.object.userData.journal);return inspect();}
+ return {get scene(){return wingActive?wing.scene:scene;},enter:()=>{wingActive=false;enter();},update:(dt,t)=>wingActive?wing.update(dt,t):update(dt,t),setSmall:v=>wingActive?wing.setSmall(v):setSmall(v),look:(dx,dy)=>{if(wingActive){wing.look(dx,dy);return;}yaw-=dx*.004;pitch=T.MathUtils.clamp(pitch-dy*.003,-1.1,1.1);},keys,tour:()=>{if(wingActive)return wing.tour();place(tour+1);return ['入口全景','滑蓋木盒','書堆與尺','沙發下的紙盒','恢復裝置'][tour];},inspect:observe,quests,action:()=>{const c=nearby();if(c?.id==='greenhouse'){goWing();return {roomChange:true,message:'你推開側門，玻璃與葉片之間透進明亮的日光。沿步道探索五種微小景觀吧。'};}if(wingActive){if(c?.id==='return'){back();return {roomChange:true,message:'回到了暖暖的客廳。零件和探索進度都還在。'};}return {message:wing.inspect()};}return quests.interact(pos,small);},nearby,get small(){return wingActive?wing.small:small;},valid:(x,z,mini)=>wingActive?wing.valid(x,z):valid(x,z,mini),get position(){return wingActive?wing.position:pos;},get room(){return wingActive?'greenhouse':'living';},solids};
 }
